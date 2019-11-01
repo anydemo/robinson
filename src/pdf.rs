@@ -1,7 +1,6 @@
-use std::io::{Seek, SeekFrom, Write, self};
 use layout::{LayoutBox, Rect};
-use painting::{DisplayCommand, build_display_list};
-
+use painting::{build_display_list, DisplayCommand};
+use std::io::{self, Seek, SeekFrom, Write};
 
 fn px_to_pt(value: f32) -> f32 {
     // 96px = 1in = 72pt
@@ -9,34 +8,43 @@ fn px_to_pt(value: f32) -> f32 {
     value * 0.75
 }
 
-
-pub fn render<W: Write + Seek>(layout_root: &LayoutBox, bounds: Rect, file: &mut W)
-    -> io::Result<()>
-{
+pub fn render<W: Write + Seek>(
+    layout_root: &LayoutBox,
+    bounds: Rect,
+    file: &mut W,
+) -> io::Result<()> {
     let display_list = build_display_list(layout_root);
     let mut pdf = try!(Pdf::new(file));
     // We map CSS pt to Poscript points (which is the default length unit in PDF).
-    try!(pdf.render_page(px_to_pt(bounds.width), px_to_pt(bounds.height), |output| {
-        for item in display_list {
-            try!(render_item(&item, output));
-        }
-        Ok(())
-    }));
+    try!(
+        pdf.render_page(px_to_pt(bounds.width), px_to_pt(bounds.height), |output| {
+            for item in display_list {
+                try!(render_item(&item, output));
+            }
+            Ok(())
+        })
+    );
     pdf.finish()
 }
-
 
 fn render_item<W: Write>(item: &DisplayCommand, output: &mut W) -> io::Result<()> {
     match *item {
         DisplayCommand::SolidColor(color, rect) => {
-            write!(output, "{} {} {} sc {} {} {} {} re f\n",
-                   // FIMXE: alpha transparency
-                   color.r, color.g, color.b,
-                   rect.x, rect.y, rect.width, rect.height)
+            write!(
+                output,
+                "{} {} {} sc {} {} {} {} re f\n",
+                // FIMXE: alpha transparency
+                color.r,
+                color.g,
+                color.b,
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height
+            )
         }
     }
 }
-
 
 struct Pdf<'a, W: 'a + Write + Seek> {
     output: &'a mut W,
@@ -66,23 +74,29 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
     }
 
     fn render_page<F>(&mut self, width: f32, height: f32, render_contents: F) -> io::Result<()>
-    where F: FnOnce(&mut W) -> io::Result<()> {
+    where
+        F: FnOnce(&mut W) -> io::Result<()>,
+    {
         let (contents_object_id, content_length) =
-        try!(self.write_new_object(move |contents_object_id, pdf| {
-            // Guess the ID of the next object. (We’ll assert it below.)
-            try!(write!(pdf.output, "<<  /Length {} 0 R\n", contents_object_id + 1));
-            try!(write!(pdf.output, ">>\n"));
-            try!(write!(pdf.output, "stream\n"));
+            try!(self.write_new_object(move |contents_object_id, pdf| {
+                // Guess the ID of the next object. (We’ll assert it below.)
+                try!(write!(
+                    pdf.output,
+                    "<<  /Length {} 0 R\n",
+                    contents_object_id + 1
+                ));
+                try!(write!(pdf.output, ">>\n"));
+                try!(write!(pdf.output, "stream\n"));
 
-            let start = try!(pdf.tell());
-            try!(write!(pdf.output, "/DeviceRGB cs /DeviceRGB CS\n"));
-            try!(write!(pdf.output, "0.75 0 0 -0.75 0 {} cm\n", height));
-            try!(render_contents(pdf.output));
-            let end = try!(pdf.tell());
+                let start = try!(pdf.tell());
+                try!(write!(pdf.output, "/DeviceRGB cs /DeviceRGB CS\n"));
+                try!(write!(pdf.output, "0.75 0 0 -0.75 0 {} cm\n", height));
+                try!(render_contents(pdf.output));
+                let end = try!(pdf.tell());
 
-            try!(write!(pdf.output, "endstream\n"));
-            Ok((contents_object_id, end - start))
-        }));
+                try!(write!(pdf.output, "endstream\n"));
+                Ok((contents_object_id, end - start))
+            }));
         try!(self.write_new_object(|length_object_id, pdf| {
             assert_eq!(length_object_id, contents_object_id + 1);
             write!(pdf.output, "{}\n", content_length)
@@ -91,8 +105,16 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
             try!(write!(pdf.output, "<<  /Type /Page\n"));
             try!(write!(pdf.output, "    /Parent {} 0 R\n", PAGES_OBJECT_ID));
             try!(write!(pdf.output, "    /Resources << >>\n"));
-            try!(write!(pdf.output, "    /MediaBox [ 0 0 {} {} ]\n", width, height));
-            try!(write!(pdf.output, "    /Contents {} 0 R\n", contents_object_id));
+            try!(write!(
+                pdf.output,
+                "    /MediaBox [ 0 0 {} {} ]\n",
+                width, height
+            ));
+            try!(write!(
+                pdf.output,
+                "    /Contents {} 0 R\n",
+                contents_object_id
+            ));
             try!(write!(pdf.output, ">>\n"));
             Ok(page_object_id)
         }));
@@ -101,7 +123,9 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
     }
 
     fn write_new_object<F, T>(&mut self, write_content: F) -> io::Result<T>
-    where F: FnOnce(usize, &mut Pdf<W>) -> io::Result<T> {
+    where
+        F: FnOnce(usize, &mut Pdf<W>) -> io::Result<T>,
+    {
         let id = self.object_offsets.len();
         // `as i64` here would only overflow for PDF files bigger than 2**63 bytes
         let offset = try!(self.tell()) as i64;
@@ -110,7 +134,9 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
     }
 
     fn write_object_with_id<F, T>(&mut self, id: usize, write_content: F) -> io::Result<T>
-    where F: FnOnce(&mut Pdf<W>) -> io::Result<T> {
+    where
+        F: FnOnce(&mut Pdf<W>) -> io::Result<T>,
+    {
         assert_eq!(self.object_offsets[id], -1);
         // `as i64` here would only overflow for PDF files bigger than 2**63 bytes
         let offset = try!(self.tell()) as i64;
@@ -119,7 +145,9 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
     }
 
     fn _write_object<F, T>(&mut self, id: usize, write_content: F) -> io::Result<T>
-    where F: FnOnce(&mut Pdf<W>) -> io::Result<T> {
+    where
+        F: FnOnce(&mut Pdf<W>) -> io::Result<T>,
+    {
         try!(write!(self.output, "{} 0 obj\n", id));
         let result = try!(write_content(self));
         try!(write!(self.output, "endobj\n"));
@@ -133,7 +161,11 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
     fn _finish(&mut self) -> io::Result<()> {
         try!(self.write_object_with_id(PAGES_OBJECT_ID, |pdf| {
             try!(write!(pdf.output, "<<  /Type /Pages\n"));
-            try!(write!(pdf.output, "    /Count {}\n", pdf.page_objects_ids.len()));
+            try!(write!(
+                pdf.output,
+                "    /Count {}\n",
+                pdf.page_objects_ids.len()
+            ));
             try!(write!(pdf.output, "    /Kids [ "));
             for &page_object_id in &pdf.page_objects_ids {
                 try!(write!(pdf.output, "{} 0 R ", page_object_id));
@@ -159,7 +191,11 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
             try!(write!(self.output, "{:010} 00000 n \n", offset));
         }
         try!(write!(self.output, "trailer\n"));
-        try!(write!(self.output, "<<  /Size {}\n", self.object_offsets.len()));
+        try!(write!(
+            self.output,
+            "<<  /Size {}\n",
+            self.object_offsets.len()
+        ));
         try!(write!(self.output, "    /Root {} 0 R\n", ROOT_OBJECT_ID));
         try!(write!(self.output, ">>\n"));
         try!(write!(self.output, "startxref\n"));
