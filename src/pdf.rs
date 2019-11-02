@@ -15,7 +15,7 @@ pub fn render<W: Write + Seek>(
 ) -> io::Result<()> {
     let display_list = build_display_list(layout_root);
     let mut pdf = try!(Pdf::new(file));
-    // We map CSS pt to Poscript points (which is the default length unit in PDF).
+    // We map CSS pt to Postscript points (which is the default length unit in PDF).
     try!(
         pdf.render_page(px_to_pt(bounds.width), px_to_pt(bounds.height), |output| {
             for item in display_list {
@@ -33,7 +33,7 @@ fn render_item<W: Write>(item: &DisplayCommand, output: &mut W) -> io::Result<()
             write!(
                 output,
                 "{} {} {} sc {} {} {} {} re f\n",
-                // FIMXE: alpha transparency
+                // FIXME: alpha transparency
                 color.r,
                 color.g,
                 color.b,
@@ -94,7 +94,7 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
                 try!(render_contents(pdf.output));
                 let end = try!(pdf.tell());
 
-                try!(write!(pdf.output, "endstream\n"));
+                try!(write!(pdf.output, "end stream\n"));
                 Ok((contents_object_id, end - start))
             }));
         try!(self.write_new_object(|length_object_id, pdf| {
@@ -150,7 +150,7 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
     {
         try!(write!(self.output, "{} 0 obj\n", id));
         let result = try!(write_content(self));
-        try!(write!(self.output, "endobj\n"));
+        try!(write!(self.output, "end obj\n"));
         Ok(result)
     }
 
@@ -180,7 +180,7 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
             try!(write!(pdf.output, ">>\n"));
             Ok(())
         }));
-        let startxref = try!(self.tell());
+        let start_xref = try!(self.tell());
         try!(write!(self.output, "xref\n"));
         try!(write!(self.output, "0 {}\n", self.object_offsets.len()));
         // Object 0 is special
@@ -198,8 +198,8 @@ impl<'a, W: Write + Seek> Pdf<'a, W> {
         ));
         try!(write!(self.output, "    /Root {} 0 R\n", ROOT_OBJECT_ID));
         try!(write!(self.output, ">>\n"));
-        try!(write!(self.output, "startxref\n"));
-        try!(write!(self.output, "{}\n", startxref));
+        try!(write!(self.output, "start_xref\n"));
+        try!(write!(self.output, "{}\n", start_xref));
         try!(write!(self.output, "%%EOF\n"));
         Ok(())
     }

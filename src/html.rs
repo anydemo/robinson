@@ -17,6 +17,8 @@ use std::collections::HashMap;
 pub fn parse(source: String) -> dom::Node {
     let mut nodes = Parser {
         pos: 0,
+        line_num: 1,
+        col_num: 1,
         input: source,
     }
     .parse_nodes();
@@ -25,12 +27,20 @@ pub fn parse(source: String) -> dom::Node {
     if nodes.len() == 1 {
         nodes.swap_remove(0)
     } else {
-        dom::elem("html".to_string(), HashMap::new(), nodes)
+        dom::elem(
+            "html".to_string(),
+            HashMap::new(),
+            nodes,
+            dom::new_parser_info(1, 1),
+        )
     }
 }
 
+#[derive(Debug)]
 struct Parser {
     pos: usize,
+    line_num: usize,
+    col_num: usize,
     input: String,
 }
 
@@ -73,7 +83,12 @@ impl Parser {
         assert_eq!(self.parse_tag_name(), tag_name);
         assert_eq!(self.consume_char(), '>');
 
-        dom::elem(tag_name, attrs, children)
+        dom::elem(
+            tag_name,
+            attrs,
+            children,
+            dom::new_parser_info(self.line_num, self.col_num),
+        )
     }
 
     /// Parse a tag or attribute name.
@@ -117,7 +132,10 @@ impl Parser {
 
     /// Parse a text node.
     fn parse_text(&mut self) -> dom::Node {
-        dom::text(self.consume_while(|c| c != '<'))
+        dom::text(
+            self.consume_while(|c| c != '<'),
+            dom::new_parser_info(self.line_num, self.col_num),
+        )
     }
 
     /// Consume and discard zero or more whitespace characters.
@@ -142,6 +160,11 @@ impl Parser {
         let mut iter = self.input[self.pos..].char_indices();
         let (_, cur_char) = iter.next().unwrap();
         let (next_pos, _) = iter.next().unwrap_or((1, ' '));
+        if cur_char == '\n' {
+            self.line_num += 1;
+            self.col_num = 1;
+        }
+        self.col_num += 1;
         self.pos += next_pos;
         cur_char
     }
@@ -159,5 +182,16 @@ impl Parser {
     /// Return true if all input is consumed.
     fn eof(&self) -> bool {
         self.pos >= self.input.len()
+    }
+}
+
+#[cfg(test)]
+mod test_html {
+    use super::*;
+
+    #[test]
+    fn test_html() {
+        let nodes = parse(r#"<html a="a"><body>Hello, world!</body></html>"#.to_owned());
+        println!("nodes = {:#?}", nodes);
     }
 }
