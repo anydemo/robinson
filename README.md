@@ -83,3 +83,10 @@ output filename, use the `-o` option. To switch to PDF output, use add
 - https://en.wikipedia.org/wiki/Comparison_of_parser_generators#References
 - https://html.spec.whatwg.org/multipage/parsing.html#parsing-html-fragments
 - [css3](https://www.w3.org/TR/2018/REC-css-ui-3-20180621/)
+
+pkg-config
+cairo
+pango
+atk
+gdk-pixbuf
+gtk-3.0
